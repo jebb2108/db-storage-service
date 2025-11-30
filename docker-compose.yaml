@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    ports:
+      - '8888:8888'
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16.11
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: pswd123
+      POSTGRES_USER: onlynone
+      POSTGRES_DB: mydb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U example_user"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 80s
+
+  rabbit:
+    image: rabbitmq:4.1-alpine
+    ports:
+      - "15671:15672"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  redis_data:
+  postgres_data:
