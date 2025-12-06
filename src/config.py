@@ -1,9 +1,12 @@
 import os
 from dataclasses import dataclass
 from datetime import timedelta, timezone
-from dotenv import load_dotenv
 
-load_dotenv('.env')
+DB_USER = os.getenv('POSTGRES_USER')
+DB_PASSWORD = os.getenv('POSTGRES_PASSWORD')
+DB_PORT = os.getenv('POSTGRES_PORT')
+DB_NAME = os.getenv('POSTGRES_DB')
+
 
 
 @dataclass
@@ -16,7 +19,7 @@ class PurposeConfig:
 
 @dataclass
 class PortsConfig:
-    api = 8888
+    api = int(os.getenv('DATABASE_PORT'))
 
 @dataclass
 class RabbitConfig:
@@ -30,7 +33,7 @@ class RabbitConfig:
 
 @dataclass(frozen=True)
 class DatabaseConfig:
-    url = f'postgresql://onlynone:pswd123@postgres:5432/mydb'
+    url = f'postgresql://{DB_USER}:{DB_PASSWORD}@postgres:{DB_PORT}/{DB_NAME}'
     min_size: int = 5
     max_size: int = 20
     timeout: int = 60

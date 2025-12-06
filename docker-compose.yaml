@@ -2,7 +2,16 @@ services:
   app:
     build: .
     ports:
-      - '8888:8888'
+      - '${DATABASE_PORT}:${DATABASE_PORT}'
+    environment:
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_PORT: ${DATABASE_PORT}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+
     depends_on:
       redis:
         condition: service_healthy
@@ -10,15 +19,16 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:16.11
+    image: postgres:13
     ports:
-      - "5432:5432"
+      - "5431:${POSTGRES_PORT}"
+      - "15671:15672"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_PASSWORD: pswd123
-      POSTGRES_USER: onlynone
-      POSTGRES_DB: mydb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U example_user"]
       interval: 30s

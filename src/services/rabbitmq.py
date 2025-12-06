@@ -3,15 +3,14 @@ from typing import TYPE_CHECKING, Optional
 
 import aio_pika
 
-from models import Location, Payment, User, Profile
-
-from config import config
-from logconf import opt_logger as log
+from src.config import config
+from src.logconf import opt_logger as log
+from src.models import Location, User, Profile
 
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractChannel
     from aio_pika.abc import AbstractRobustConnection
-    from models.bot_models import User
+    from src.models.bot_models import User
 
 
 logger = log.setup_logger('rabbitmq')

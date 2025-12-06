@@ -1,22 +1,20 @@
-import uvicorn
-from endpoints.handlers import router
+import asyncio
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import wraps
+
+import uvicorn
+from fastapi import FastAPI
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
 
-from config import config
-from dependencies import get_database
-from logconf import opt_logger as log
-
-import asyncio
-import logging
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-
-from models import User, Payment
+from endpoints.handlers import router
+from src.config import config
+from src.dependencies import get_database
+from src.logconf import opt_logger as log
+from src.models import User
 
 logger = log.setup_logger('worker')
 broker = RabbitBroker(config.rabbit.url, logger=logger)
@@ -58,18 +56,7 @@ async def add_user(data: dict) -> None:
     user_dict = json.loads(data["user"])
     user_data = User(**user_dict)
     await database.update_user(user_data)
-    await database.create_payment(Payment(user_id=user_data.user_id))
     logger.info("New user processed by worker")
-
-
-@register_purpose(config.purpose.create_payment)
-async def create_payment(data: dict) -> None:
-    """ Создает платеж пользователя """
-    database = await get_database()
-    payment_dict = json.loads(data["payment"])
-    payment_dict["until"] = datetime.fromisoformat(payment_dict["until"])
-    await database.create_payment(Payment(**payment_dict))
-    logger.info("New payment processed by worker")
 
 
 @register_purpose(config.purpose.add_profile)
@@ -90,15 +77,6 @@ async def add_location(data: dict) -> None:
     database = await get_database()
     location = json.loads(data["location"])
     await database.add_users_location(**location)
-    return None
-
-
-@register_purpose(config.purpose.create_payment)
-async def add_payment(data: dict) -> None:
-    database = await get_database()
-    payment_dict = json.loads(data["payment"])
-    payment = Payment(**payment_dict)
-    await database.create_payment(payment)
     return None
 
 @broker.subscriber(config.rabbit.queue.new_users)
@@ -122,12 +100,12 @@ async def handle_new_users(data: dict, msg: RabbitMessage):
 async def background_worker():
     while True:
         try:
-            logging.info("Starting worker...")
+            logger.info("Starting worker...")
             worker = FastStream(broker, logger=logger)
             await worker.run()
 
         except Exception as e:
-            logging.error(f"Worker error: {e}")
+            logger.error(f"Worker error: {e}")
             break
 
 
@@ -136,7 +114,7 @@ async def lifespan(app: FastAPI): # noqa
     # Запускаем воркер при старте приложения
     await get_database()
     task = asyncio.create_task(background_worker())
-    logging.info("Background worker started")
+    logger.info("Background worker started")
     yield
 
     # Останавливаем воркер при завершении
@@ -144,7 +122,7 @@ async def lifespan(app: FastAPI): # noqa
     try:
         await task
     except asyncio.CancelledError:
-        logging.info("Background worker stopped")
+        logger.info("Background worker stopped")
 
 
 app = FastAPI(lifespan=lifespan)

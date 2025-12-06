@@ -1,18 +1,18 @@
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends
 from fastapi.params import Query
 
-from dependencies import get_database, get_rabbit
-
-from typing import TYPE_CHECKING
-
-from models.bot_models import User, Payment
-from services.rabbitmq import RabbitMQService
-from logconf import opt_logger as log
+from src.dependencies import get_database, get_rabbit
+from src.logconf import opt_logger as log
+from src.models import Location
+from src.models.bot_models import User
+from src.services.rabbitmq import RabbitMQService
 
 if TYPE_CHECKING:
-    from services.database import DatabaseService
+    from src.services.database import DatabaseService
 
-router = APIRouter()
+router = APIRouter(prefix='/api/v0')
 logger = log.setup_logger('handlers')
 
 @router.get('/user_exists')
@@ -41,7 +41,6 @@ async def get_user_info(
         user_data = await database.get_user_info(user_id)
         return {'user_data': user_data}
 
-
 @router.post('/users')
 async def add_user_and_payment(
         user_data: User,
@@ -50,3 +49,16 @@ async def add_user_and_payment(
     logger.info('Sending messages to RabbitMQ')
     await rabbit.publish_user(user_data)
 
+@router.get('/location')
+async def get_location(
+        user_id: int = Query(..., description='User ID'),
+        database: "DatabaseService" = Depends(get_database)):
+    location = await database.get_users_location(user_id)
+    return {"location": location}
+
+@router.post('/location')
+async def add_location(
+        location_data: Location,
+        rabbit: "RabbitMQService" = Depends(get_rabbit)
+):
+    await rabbit.publish_location(location_data)

@@ -1,13 +1,9 @@
 FROM python:3.13.3
+LABEL authors="Gabriel Bouchard"
 
 WORKDIR /app
 
 ENV PYTHONPATH=/app
-
-ENV BASE_URL=postgres
-ENV DEBUG=TRUE
-ENV LOG_LEVEL=INFO
-ENV DB_API_PORT=4040
 
 COPY pyproject.toml poetry.lock ./
 

@@ -3,7 +3,7 @@ import sys
 
 from colorama import init, Fore, Style
 
-from config import config
+from src.config import config
 
 
 class RootLogger:
