@@ -39,7 +39,7 @@ services:
   rabbit:
     image: rabbitmq:4.1-alpine
     ports:
-      - "15671:15672"
+      - "15670:15672"
 
   redis:
     image: redis:7-alpine

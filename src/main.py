@@ -14,7 +14,7 @@ from endpoints.handlers import router
 from src.config import config
 from src.dependencies import get_database
 from src.logconf import opt_logger as log
-from src.models import User
+from src.models import User, Profile
 
 logger = log.setup_logger('worker')
 broker = RabbitBroker(config.rabbit.url, logger=logger)
@@ -55,7 +55,7 @@ async def add_user(data: dict) -> None:
     database = await get_database()
     user_dict = json.loads(data["user"])
     user_data = User(**user_dict)
-    await database.update_user(user_data)
+    await database.save_user(user_data)
     logger.info("New user processed by worker")
 
 
@@ -63,21 +63,26 @@ async def add_user(data: dict) -> None:
 async def add_profile(data: dict) -> None:
     database = await get_database()
     profile = json.loads(data["profile"])
-    bday = profile.get("birthday")
-    day, month, year = bday.split('-')
-    date_str = f"{year}-{month}-{day}"
-    date_obj = datetime.fromisoformat(date_str).date()
-    profile["birthday"] = date_obj
-    await database.add_users_profile(**profile)
-    return None
+    # Создает pydantic модель
+    profile_data = Profile(
+        user_id=profile.get('user_id'),
+        nickname=profile.get('nickname', 'anon'),
+        email=profile.get('email', 'example@example.com'),
+        gender=profile.get('gender', 'male'),
+        intro=profile.get('intro', 'no intro'),
+        dating= profile.get('dating', False),
+        birthday=profile.get('birthday', '01-01-1999')
+    )
+    # Сохраняет в БД
+    await database.save_profile(profile_data)
 
 
 @register_purpose(config.purpose.add_location)
 async def add_location(data: dict) -> None:
     database = await get_database()
     location = json.loads(data["location"])
-    await database.add_users_location(**location)
-    return None
+    await database.save_location(**location)
+
 
 @broker.subscriber(config.rabbit.queue.new_users)
 async def handle_new_users(data: dict, msg: RabbitMessage):

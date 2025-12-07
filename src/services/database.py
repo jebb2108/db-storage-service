@@ -9,7 +9,7 @@ import asyncpg
 from src.config import config
 from src.exc import PaymentException
 from src.logconf import opt_logger as log
-from src.models.bot_models import User
+from src.models import User, Target, Profile
 
 logger = log.setup_logger("database")
 
@@ -35,16 +35,15 @@ class DatabaseService:
 
             # Создаем таблицы
             await self.__create_users()
-            await self.__create_users_profile()
+            await self.__create_profiles()
             await self.__create_locations()
             await self.__create_words()
             await self.__create_contexts()
             await self.__create_audios()
-            await self.__create_match_ids()
-            await self.__create_weekly_reports()
-            await self.__create_report_sentences()
-            await self.__creaate_report_translations()
-            await self.__create_report_synonyms()
+            # await self.__create_weekly_reports()
+            # await self.__create_report_sentences()
+            # await self.__creaate_report_translations()
+            # await self.__create_report_synonyms()
 
             self.initialized = True
 
@@ -127,19 +126,20 @@ class DatabaseService:
             """
             )
 
-    async def __create_users_profile(self):
+    async def __create_profiles(self):
         async with self.acquire_connection() as conn:
             await conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS users_profile (
+                CREATE TABLE IF NOT EXISTS profiles (
                 user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
                 nickname VARCHAR(50) NOT NULL,
                 email VARCHAR(50) NOT NULL,
                 birthday DATE NOT NULL,
                 dating BOOLEAN DEFAULT FALSE,
                 gender VARCHAR(50) NULL,
-                about TEXT NULL,
-                status VARCHAR(50) NOT NULL
+                intro TEXT NULL,
+                status VARCHAR(50) NOT NULL,
+                UNIQUE (user_id)
                 ); 
                 """
             )
@@ -159,97 +159,79 @@ class DatabaseService:
                 """
             )
 
-    async def __create_weekly_reports(self):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS weekly_reports (
-                report_id SERIAL PRIMARY KEY,
-                user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-                status TEXT DEFAULT 'OK',
-                generation_date TIMESTAMP DEFAULT NOW(),
-                sent BOOLEAN DEFAULT FALSE
-                ); 
-                """
-            )
+    # async def __create_weekly_reports(self):
+    #     async with self.acquire_connection() as conn:
+    #         await conn.execute(
+    #             """
+    #             CREATE TABLE IF NOT EXISTS weekly_reports (
+    #             report_id SERIAL PRIMARY KEY,
+    #             user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    #             status TEXT DEFAULT 'OK',
+    #             generation_date TIMESTAMP DEFAULT NOW(),
+    #             sent BOOLEAN DEFAULT FALSE
+    #             );
+    #             """
+    #         )
+    #
+    # async def __create_report_sentences(self):
+    #     async with self.acquire_connection() as conn:
+    #         await conn.execute(
+    #             """
+    #             CREATE TABLE IF NOT EXISTS report_sentences (
+    #             word_id SERIAL PRIMARY KEY,
+    #             report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
+    #             word VARCHAR(100) NOT NULL,
+    #             sentence TEXT NOT NULL,
+    #             audio_url TEXT NOT NULL,
+    #             options TEXT[] NOT NULL,
+    #             correct_index INT NOT NULL
+    #             );
+    #             """
+    #         )
+    #
+    # async def __creaate_report_translations(self):
+    #     async with self.acquire_connection() as  conn:
+    #         await conn.execute(
+    #             """
+    #             CREATE TABLE IF NOT EXISTS report_translations (
+    #             word_id SERIAL PRIMARY KEY,
+    #             report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
+    #             word VARCHAR(100) NOT NULL,
+    #             audio_url TEXT NOT NULL,
+    #             options TEXT[] NOT NULL,
+    #             correct_index INT NOT NULL
+    #             );
+    #             """
+    #         )
+    #
+    # async def __create_report_synonyms(self):
+    #     async with self.acquire_connection() as conn:
+    #         await conn.execute("""
+    #         CREATE TABLE IF NOT EXISTS report_synonyms (
+    #         word_id SERIAL PRIMARY KEY,
+    #         report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
+    #         word VARCHAR(100) NOT NULL,
+    #         options TEXT[] NOT NULL,
+    #         correct_index INT NOT NULL
+    #         );
+    #         """
+    #     )
 
-    async def __create_report_sentences(self):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS report_sentences (
-                word_id SERIAL PRIMARY KEY,
-                report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
-                word VARCHAR(100) NOT NULL,
-                sentence TEXT NOT NULL,
-                audio_url TEXT NOT NULL,
-                options TEXT[] NOT NULL,
-                correct_index INT NOT NULL
-                ); 
-                """
-            )
 
-    async def __creaate_report_translations(self):
-        async with self.acquire_connection() as  conn:
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS report_translations (
-                word_id SERIAL PRIMARY KEY,
-                report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
-                word VARCHAR(100) NOT NULL,
-                audio_url TEXT NOT NULL,
-                options TEXT[] NOT NULL,
-                correct_index INT NOT NULL
-                );
-                """
-            )
-
-    async def __create_report_synonyms(self):
-        async with self.acquire_connection() as conn:
-            await conn.execute("""
-            CREATE TABLE IF NOT EXISTS report_synonyms (
-            word_id SERIAL PRIMARY KEY,
-            report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
-            word VARCHAR(100) NOT NULL,
-            options TEXT[] NOT NULL,
-            correct_index INT NOT NULL
-            );
-            """
-        )
-
-    async def __create_match_ids(self):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS match_ids (
-                id SERIAL PRIMARY KEY,
-                match_id VARCHAR(256) NOT NULL
-                );
-                """
-            )
-
-    # Контекстный менеджер для работы с соединениями
     @asynccontextmanager
     async def acquire_connection(self):
         """Асинхронный контекстный менеджер для работы с соединениями"""
         conn = await self._pool.acquire()
         try:
             yield conn
-
-        except Exception as e:
-            raise logger.warning(f"Connection error occurred, not releasing invalid connection: {e}")
-
         finally:
+            await self._pool.release(conn)
+
+
+    async def save_user(self, user_data: User) -> None:
+        """ Сохраняет нового пользователя """
+        async with self.acquire_connection() as conn:
             try:
-                if conn and not conn.is_closed():
-                    await self._pool.release(conn)
-            except Exception as release_error:
-                logger.warning(f"Failed to release connection (likely already invalid): {release_error}")
-
-    async def update_user(self, user_data: User) -> None:
-
-        try:
-            async with self.acquire_connection() as conn:
                 result = await conn.execute(
                     """
                     INSERT INTO users (user_id, username, first_name, camefrom, language, fluency, topics, lang_code) 
@@ -275,88 +257,55 @@ class DatabaseService:
                 logger.info(f"User {user_data.user_id} created/updated: {result}")
 
 
-        except Exception as e:
-            logger.error(f"Error creating/updating user {user_data.user_id}: {e}")
+            except Exception as e:
+                logger.error(f"Error creating/updating user {user_data.user_id}: {e}")
+                raise
 
-
-    async def add_users_profile(
-            self,
-            user_id: int,
-            nickname: str,
-            email: str,
-            birthday: str,
-            about: str,
-            gender: str = None,
-            dating: bool = False,
-            status: str = "rookie",
-            location=None  # TODO: временная болванка. Нужно подравить логику обработки местоплодения
-    ) -> None:
+    async def save_profile(self, profile_data: Profile) -> None:
+        """ Сохраняет профиль пользователя """
         async with self.acquire_connection() as conn:
-            await conn.execute(
-                """
-            INSERT INTO users_profile 
-            (
-                user_id, nickname, 
-                email, birthday, 
-                dating, gender, 
-                about, status
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (user_id) DO UPDATE
-            SET status = EXCLUDED.status,
-                nickname = EXCLUDED.nickname,
-                email = EXCLUDED.email,
-                birthday = EXCLUDED.birthday,
-                dating = EXCLUDED.dating,
-                gender = EXCLUDED.gender,
-                about = EXCLUDED.about
-            """,
-                user_id,
-                nickname,
-                email,
-                birthday,
-                dating,
-                gender,
-                about,
-                status
-            )
-            logger.info(
-                f"User {user_id} profile added. Their name: {nickname}, "
-                f"email: {email}, birthday: {birthday}, dating: {dating}, gender: {gender}, "
-                f"status: {status},\n intro: {about}"
-            )
-
-            return
-
-    async def get_users_profile(self, user_id: int) -> dict:
-        async with self.acquire_connection() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM users_profile WHERE user_id = $1", user_id
-            )
-            return dict(row) if row else None
-
-    async def get_all_user_info(self, user_id: int):
-        async with self.acquire_connection() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT u.*, up.* 
-                FROM users u 
-                LEFT JOIN users_profile up 
-                    ON u.user_id = up.user_id 
-                WHERE u.user_id = $1
+            try:
+                await conn.execute(
+                    """
+                INSERT INTO profiles 
+                (
+                    user_id, nickname, 
+                    email, birthday, 
+                    dating, gender, 
+                    intro, status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (user_id) DO UPDATE
+                SET status = EXCLUDED.status,
+                    nickname = EXCLUDED.nickname,
+                    email = EXCLUDED.email,
+                    birthday = EXCLUDED.birthday,
+                    dating = EXCLUDED.dating,
+                    gender = EXCLUDED.gender,
+                    intro = EXCLUDED.intro
                 """,
-                user_id,
-            )
-            return dict(row) if row else None
+                    profile_data.user_id, profile_data.nickname, profile_data.email, profile_data.birthday,
+                    profile_data.dating, profile_data.gender, profile_data.intro, profile_data.status
+                )
+                logger.debug(
+                    f"User {profile_data.user_id} profile added. Their name: {profile_data.nickname}, "
+                    f"email: {profile_data.email}, birthday: {profile_data.birthday}, dating: {profile_data.dating}, "
+                    f"gender: {profile_data.gender}, status: {profile_data.status},\n intro: {profile_data.intro}"
+                )
 
-    async def get_all_users_for_notification(self) -> List[int]:
+            except Exception as e:
+                logger.error(f"Error creating/updating user profile {profile_data.user_id}: {e}")
+                raise
+
+
+    async def get_all_users_for_notification(self) -> List[Tuple[int, str]]:
         async with self.acquire_connection() as conn:
             reports = await conn.fetch(
                 "SELECT DISTINCT user_id, last_notified FROM users WHERE user_id IS NOT NULL AND blocked_bot = false"
             )
-            return [(int(report["user_id"]), report["last_notified"]) for report in reports]
+            return [ ( int(report["user_id"]), report["last_notified"] ) for report in reports ]
 
-    async def add_users_location(
+    async def save_location(
             self,
             user_id: int,
             latitude: Optional[str] = None,
@@ -389,63 +338,86 @@ class DatabaseService:
             )
             return
 
-    async def get_criteria(self, user_id: int) -> dict:
+    async def query_criteria_by_target(self, user_id: int, target: Target) -> dict:
+        async with self.acquire_connection() as conn:
+            try:
+                if target is Target.ALL:
+                    # Возвращает все данные о пользователе
+                    row = await conn.fetchrow(
+                        """
+                        SELECT 
+                            u.*,
+                            p.nickname, p.email, p.birthday, 
+                            p.dating, p.gender, p.intro, p.status
+                        FROM users u
+                        LEFT JOIN profiles p 
+                          ON u.user_id = p.user_id
+                        WHERE u.user_id = $1
+                        """,
+                        user_id,
+                    )
+                elif target.value in ['users', 'profiles']:
+                    row = await conn.fetchrow(
+                        f"SELECT * FROM {target.value} WHERE user_id = $1", user_id
+                    )
+
+                else:
+                    # Обновляет нужный критерий пользователя,
+                    # динамическая выбирая талицу в БД
+                    table = {
+                        'language': 'users', 'fluency': 'users',
+                        'topics': 'users', 'username': 'users',
+                        'nickname': 'profiles', 'email': 'profiles',
+                        'birthday': 'profiles', 'dating': 'profiles',
+                        'gender': 'profiles', 'about': 'profiles'
+                    }.get(target.value, None)
+
+                    if table:
+                        # Отправляет SQL запрос в БД
+                        row = await conn.fetchrow(
+                            f"SELECT {target.value} FROM {table} WHERE user_id = $1", user_id
+                        )
+
+                return dict(row) if row else None
+
+            except Exception as e:
+                logger.error(f"Error getting target criterion: {e}")
+
+    async def update_profile(self, user_id: int, target: Target, data: str) -> None:
+        """ Обновляет одну из выбранных таблиц с выбранными аргументами """
+        async with self.acquire_connection() as conn:
+            table = {
+                'language': 'users', 'fluency': 'users',
+                'topics': 'users', 'username': 'users',
+                'nickname': 'profiles', 'email': 'profiles',
+                'birtday': 'profiles','dating': 'profiles',
+                'gender': 'profiles', 'about': 'profiles'
+            }.get(target.value, None)
+
+            if table is None: return
+            try:
+                await conn.execute(
+                    f"UPDATE {table} SET {target.value} = $1 WHERE user_id = $2",
+                    data, user_id,
+                )
+            except Exception as e:
+                raise logger.error(f'Error updating profile: {e}')
+
+    async def get_location(self, user_id: int):
         async with self.acquire_connection() as conn:
             row = await conn.fetchrow(
-                "SELECT language, fluency, dating FROM users WHERE user_id = $1",
-                user_id,
+                "SELECT city, country FROM locations WHERE user_id = $1", user_id
             )
             return dict(row) if row else None
 
-    async def change_nickname(self, user_id: int, new_nickname: str):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                "UPDATE users_profile SET nickname = $1 WHERE user_id = $2",
-                new_nickname, user_id
-            )
-
-    async def change_language(self, user_id: int, language: str, fluency: int):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                "UPDATE users SET language = $1, fluency = $2 WHERE user_id = $3",
-                language, fluency, user_id
-            )
-
-    async def change_topic(self, user_id: int, new_topics: str) -> None:
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                """UPDATE users SET topics = $1 WHERE user_id = $2""",
-                new_topics, user_id
-            )
-
-    async def change_intro(self, user_id: int, new_intro: str):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                "UPDATE users_profile SET about = $1 WHERE user_id = $2",
-                new_intro, user_id
-            )
-
-    async def get_users_location(self, user_id: int) -> dict:
-        async with self.acquire_connection() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM locations WHERE user_id = $1", user_id
-            )
-            logger.debug(f"User {user_id} location: {dict(row) if row else None}")
-            return dict(row) if row else None
-
-    async def get_user_info(self, user_id: int) -> dict:
-        async with self.acquire_connection() as conn:
-            row = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-            logger.debug(f"User {user_id} info: {dict(row) if row else None}")
-            return dict(row) if row else None
 
     async def get_words_by_different_users(self, word: str) -> Dict[str, Dict[str, Any]]:
         async with self.acquire_connection() as conn:
             rows = await conn.fetch("""
-                SELECT up.nickname, w.user_id, w.word, w.part_of_speech, w.translation, w.created_at
+                SELECT p.nickname, w.user_id, w.word, w.part_of_speech, w.translation, w.created_at
                 FROM words w
-                LEFT JOIN users_profile up ON w.user_id = up.user_id
-                WHERE w.word = $1 AND w.is_public = true AND up.nickname IS NOT NULL
+                LEFT JOIN profiles p ON w.user_id = p.user_id
+                WHERE w.word = $1 AND w.is_public = true AND p.nickname IS NOT NULL
             """, word)
 
             word_dict = {}
@@ -459,6 +431,7 @@ class DatabaseService:
                     "created_at": row["created_at"].isoformat()
                 }
             return word_dict
+
 
     async def get_words(self, user_id: int):
         async with self.acquire_connection() as conn:
@@ -596,9 +569,9 @@ class DatabaseService:
                 UPDATE words 
                 SET word_state = 'REPEATED'
                 WHERE user_id = (
-                    SELECT up.user_id
-                    FROM users_profile up
-                    WHERE up.nickname = $1
+                    SELECT p.user_id
+                    FROM profiles p
+                    WHERE p.nickname = $1
                     LIMIT 1
                 )
                 AND word_state = 'NEW'
@@ -674,21 +647,21 @@ class DatabaseService:
                     logger.error(f"Database error: {e}")
                     return None
 
-    async def check_user_exists(self, user_id: int) -> bool:
+    async def user_exists(self, user_id: int) -> bool:
         async with self.acquire_connection() as conn:
             return bool(
                 await conn.fetchrow("SELECT 1 FROM users WHERE user_id = $1", user_id)
             )
 
-    async def check_profile_exists(self, user_id: int) -> bool:
+    async def profile_exists(self, user_id: int) -> bool:
         async with self.acquire_connection() as conn:
             return bool(
                 await conn.fetchrow(
-                    "SELECT 1 FROM users_profile WHERE user_id = $1", user_id
+                    "SELECT 1 FROM profiles WHERE user_id = $1", user_id
                 )
             )
 
-    async def check_location_exists(self, user_id: int) -> bool:
+    async def location_exists(self, user_id: int) -> bool:
         async with self.acquire_connection() as conn:
             return bool(
                 await conn.fetchrow(
@@ -696,11 +669,11 @@ class DatabaseService:
                 )
             )
 
-    async def check_nickname_exists(self, nickname: str):
+    async def nickname_exists(self, nickname: str):
         async with self.acquire_connection() as conn:
             return bool(
                 await conn.fetchrow(
-                    "SELECT 1 FROM users_profile WHERE nickname = $1", nickname
+                    "SELECT 1 FROM profiles WHERE nickname = $1", nickname
                 )
             )
 
@@ -798,7 +771,8 @@ class DatabaseService:
 
     async def update_word_state(self, user_id: int, word: str, correct: bool):
         async with self.acquire_connection() as conn:
-            await conn.execute("""
+            await conn.execute(
+                """
                 UPDATE words 
                 SET word_state = CASE 
                     WHEN $3 = true THEN 
@@ -817,7 +791,8 @@ class DatabaseService:
                         END
                 END
                 WHERE user_id = $1 AND word = $2
-            """, user_id, word, correct)
+            """, user_id, word, correct
+            )
 
     async def mark_user_as_blocked(self, user_id: int):
         async with self.acquire_connection() as conn:
