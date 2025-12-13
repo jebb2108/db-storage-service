@@ -1,10 +1,10 @@
-from pydoc_data.topics import topics
 from typing import TYPE_CHECKING, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.params import Query
 
 from src.dependencies import get_database, get_rabbit
+from src.exc import PostgresConnectionError
 from src.logconf import opt_logger as log
 from src.models import Location, Profile
 from src.models.bot_models import User, Target
@@ -17,14 +17,28 @@ router = APIRouter(prefix='/api/v0')
 logger = log.setup_logger('handlers')
 
 
+@router.get('/health')
+async def check_connection(database: "DatabaseService"=Depends(get_database)):
+    try:
+        return {"version": await database.get_version()}
+    except PostgresConnectionError:
+        raise HTTPException(status_code=500, detail="Error connecting to DB")
+
 @router.get('/user_exists')
 async def check_user_exists(
         user_id: int = Query(..., description='User ID', examples=[123]),
         database: "DatabaseService"=Depends(get_database)
 ):
-    if await database.user_exists(user_id):
-        return {"user_exists": True}
-    return {"user_exists": False}
+    return await database.user_exists(user_id)
+
+@router.get('/nickname_exists')
+async def check_nickname_exists(
+        nickname: str = Query(..., description='some user`s nickname'),
+        database: "DatabaseService"=Depends(get_database)
+) -> bool:
+    """ Проверяет наличие на никнейм в БД """
+    return await database.nickname_exists(nickname)
+
 
 @router.get('/users')
 async def get_user_info(

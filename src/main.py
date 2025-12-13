@@ -1,7 +1,6 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime
 from functools import wraps
 
 import uvicorn
@@ -9,6 +8,7 @@ from fastapi import FastAPI
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
+from starlette.middleware.cors import CORSMiddleware
 
 from endpoints.handlers import router
 from src.config import config
@@ -131,6 +131,14 @@ async def lifespan(app: FastAPI): # noqa
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware, # noqa
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router)
 
 

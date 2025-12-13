@@ -7,7 +7,7 @@ from typing import Dict, Tuple, List, Optional, Any
 import asyncpg
 
 from src.config import config
-from src.exc import PaymentException
+from src.exc import PaymentException, PostgresConnectionError
 from src.logconf import opt_logger as log
 from src.models import User, Target, Profile
 
@@ -226,6 +226,19 @@ class DatabaseService:
             yield conn
         finally:
             await self._pool.release(conn)
+
+    async def get_version(self):
+        """ Получает версию БД от Postgres """
+        async with self.acquire_connection() as conn:
+            try:
+                return await conn.fetchval(
+                    """
+                    SELECT VERSION();
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Error connecting to DB: {e}")
+                raise PostgresConnectionError
 
 
     async def save_user(self, user_data: User) -> None:
