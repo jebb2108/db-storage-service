@@ -14,7 +14,8 @@ class PurposeConfig:
     add_user = 'ADD_USER'
     add_profile = 'ADD_PROFILE'
     add_location = 'ADD_LOCATION'
-    create_payment = 'CREATE_PAYMENT_PURPOSE'
+    add_word = 'ADD_WORD'
+    add_payment = 'ADD_PAYMENT_PURPOSE'
 
 
 @dataclass
@@ -42,6 +43,7 @@ class DatabaseConfig:
 @dataclass
 class QueueConfig:
     new_users = 'new_users'
+    new_words = 'new_words'
 
 @dataclass
 class Config:

@@ -9,7 +9,7 @@ import asyncpg
 from src.config import config
 from src.exc import PaymentException, PostgresConnectionError
 from src.logconf import opt_logger as log
-from src.models import User, Target, Profile
+from src.models import User, Target, Profile, Word, Location, Stats
 
 logger = log.setup_logger("database")
 
@@ -32,7 +32,6 @@ class DatabaseService:
                 max_size=config.database.max_size,
                 timeout=config.database.timeout
             )
-
             # Создаем таблицы
             await self.__create_users()
             await self.__create_profiles()
@@ -40,10 +39,6 @@ class DatabaseService:
             await self.__create_words()
             await self.__create_contexts()
             await self.__create_audios()
-            # await self.__create_weekly_reports()
-            # await self.__create_report_sentences()
-            # await self.__creaate_report_translations()
-            # await self.__create_report_synonyms()
 
             self.initialized = True
 
@@ -105,7 +100,7 @@ class DatabaseService:
                 context TEXT NOT NULL,
                 edited BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (user_id, word_id, context)
+                UNIQUE (user_id, word_id)
                 );
             """
             )
@@ -121,7 +116,7 @@ class DatabaseService:
                 audio_url TEXT NOT NULL,
                 edited BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (user_id, audio_id, audio_url)
+                UNIQUE (user_id, audio_id)
                 );
             """
             )
@@ -158,65 +153,6 @@ class DatabaseService:
                 ); 
                 """
             )
-
-    # async def __create_weekly_reports(self):
-    #     async with self.acquire_connection() as conn:
-    #         await conn.execute(
-    #             """
-    #             CREATE TABLE IF NOT EXISTS weekly_reports (
-    #             report_id SERIAL PRIMARY KEY,
-    #             user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    #             status TEXT DEFAULT 'OK',
-    #             generation_date TIMESTAMP DEFAULT NOW(),
-    #             sent BOOLEAN DEFAULT FALSE
-    #             );
-    #             """
-    #         )
-    #
-    # async def __create_report_sentences(self):
-    #     async with self.acquire_connection() as conn:
-    #         await conn.execute(
-    #             """
-    #             CREATE TABLE IF NOT EXISTS report_sentences (
-    #             word_id SERIAL PRIMARY KEY,
-    #             report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
-    #             word VARCHAR(100) NOT NULL,
-    #             sentence TEXT NOT NULL,
-    #             audio_url TEXT NOT NULL,
-    #             options TEXT[] NOT NULL,
-    #             correct_index INT NOT NULL
-    #             );
-    #             """
-    #         )
-    #
-    # async def __creaate_report_translations(self):
-    #     async with self.acquire_connection() as  conn:
-    #         await conn.execute(
-    #             """
-    #             CREATE TABLE IF NOT EXISTS report_translations (
-    #             word_id SERIAL PRIMARY KEY,
-    #             report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
-    #             word VARCHAR(100) NOT NULL,
-    #             audio_url TEXT NOT NULL,
-    #             options TEXT[] NOT NULL,
-    #             correct_index INT NOT NULL
-    #             );
-    #             """
-    #         )
-    #
-    # async def __create_report_synonyms(self):
-    #     async with self.acquire_connection() as conn:
-    #         await conn.execute("""
-    #         CREATE TABLE IF NOT EXISTS report_synonyms (
-    #         word_id SERIAL PRIMARY KEY,
-    #         report_id INT REFERENCES weekly_reports(report_id) ON DELETE CASCADE,
-    #         word VARCHAR(100) NOT NULL,
-    #         options TEXT[] NOT NULL,
-    #         correct_index INT NOT NULL
-    #         );
-    #         """
-    #     )
-
 
     @asynccontextmanager
     async def acquire_connection(self):
@@ -319,37 +255,38 @@ class DatabaseService:
             return [ ( int(report["user_id"]), report["last_notified"] ) for report in reports ]
 
     async def save_location(
-            self,
-            user_id: int,
-            latitude: Optional[str] = None,
-            longitude: Optional[str] = None,
-            city: Optional[str] = None,
-            country: Optional[str] = None,
-            tzone: Optional[str] = None,
+            self, location: Location
     ) -> None:
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                """
-                INSERT INTO locations (user_id, latitude, longitude, city, country, timezone)
-                VALUES ($1,$2,$3,$4,$5,$6)
-                ON CONFLICT (user_id) DO UPDATE
-                SET latitude = EXCLUDED.latitude,
-                    longitude = EXCLUDED.longitude,
-                    city = EXCLUDED.city,
-                    country = EXCLUDED.country,
-                    timezone = EXCLUDED.timezone
-                """,
-                user_id,
-                latitude,
-                longitude,
-                city,
-                country,
-                tzone,
-            )
-            logger.info(
-                f"User {user_id} location added: {latitude}, {longitude}, {city}, {country}, {tzone}"
-            )
-            return
+        try:
+            async with self.acquire_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO locations (user_id, latitude, longitude, city, country, timezone)
+                    VALUES ($1,$2,$3,$4,$5,$6)
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET latitude = EXCLUDED.latitude,
+                        longitude = EXCLUDED.longitude,
+                        city = EXCLUDED.city,
+                        country = EXCLUDED.country,
+                        timezone = EXCLUDED.timezone
+                    """,
+                    location.user_id,
+                    location.latitude,
+                    location.longitude,
+                    location.city,
+                    location.country,
+                    location.tzone,
+                )
+                logger.info(
+                    f"User {location.user_id} location added: "
+                    f"{location.latitude}, {location.longitude}, "
+                    f"{location.city}, {location.country}, {location.tzone}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error creating/updating user profile {location.user_id}: {e}")
+            raise
+
 
     async def query_criteria_by_target(self, user_id: int, target: Target) -> dict:
         async with self.acquire_connection() as conn:
@@ -424,111 +361,100 @@ class DatabaseService:
             return dict(row) if row else None
 
 
-    async def get_words_by_different_users(self, word: str) -> Dict[str, Dict[str, Any]]:
-        async with self.acquire_connection() as conn:
-            rows = await conn.fetch("""
-                SELECT p.nickname, w.user_id, w.word, w.part_of_speech, w.translation, w.created_at
-                FROM words w
-                LEFT JOIN profiles p ON w.user_id = p.user_id
-                WHERE w.word = $1 AND w.is_public = true AND p.nickname IS NOT NULL
-            """, word)
+    async def query_words_by_user_id(self, user_id: int):
+        try:
+            async with self.acquire_connection() as conn:
+                    rows = await conn.fetch(
+                        """
+                        SELECT w.id, w.user_id, w.word, w.part_of_speech
+                        ,w.translation, w.is_public, c.context
+                        FROM words w
+                        LEFT JOIN contexts c
+                            ON w.id = c.word_id
+                        WHERE w.user_id = $1 
+                        ORDER BY w.word""",
+                        user_id,
+                    )
+                    word_dict = defaultdict(list)
+                    [ word_dict[int(row["user_id"])].append(Word(**row)) for row in rows ]
+                    return word_dict
 
-            word_dict = {}
-            for row in rows:
-                user_id = str(row["user_id"])
-                word_dict[user_id] = {
-                    "word": row["word"],
-                    "part_of_speech": row["part_of_speech"],
-                    "translation": row["translation"],
-                    "nickname": row["nickname"],
-                    "created_at": row["created_at"].isoformat()
-                }
-            return word_dict
+        except Exception as e:
+            logger.error(f"Database error: {e}")
 
 
-    async def get_words(self, user_id: int):
-        async with self.acquire_connection() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT 
-                w.id
-                ,w.word
-                ,w.part_of_speech
-                ,w.translation 
-                ,w.is_public
-                ,c.context
-                FROM words w
-                LEFT JOIN contexts c
-                    ON w.id = c.word_id
-                WHERE w.user_id = $1 
-                ORDER BY w.word""",
-                user_id,
-            )
-            return [
-                (row["id"], row["word"], row["part_of_speech"], row["translation"], row["is_public"], row["context"])
-                for row in rows
-            ]
+    async def query_words_by_word(self, word: str):
+        try:
+            async with self.acquire_connection() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT p.nickname, w.user_id, w.word, 
+                    w.part_of_speech, w.translation, w.created_at
+                    FROM words w
+                    LEFT JOIN profiles p 
+                        ON w.user_id = p.user_id
+                    WHERE w.word = $1 AND 
+                        w.is_public = true AND 
+                        p.nickname IS NOT NULL
+                    """, word
+                )
 
-    async def add_word(self, user_id: int, word: str, pos: str, value: str, is_public: bool, context: str = None,
-                       audio=None):
+                return { int(row["user_id"]): dict(row) for row in rows }
+
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+
+
+    async def save_word(self, word_data: Word):
         async with self.acquire_connection() as conn:
 
             is_active = await conn.fetchval(
-                "SELECT is_active FROM users WHERE user_id = $1", user_id
+                "SELECT is_active FROM users WHERE user_id = $1", word_data.user_id
             )
             if not is_active: raise PaymentException
             try:
                 row = await conn.fetchrow(
-                    """INSERT INTO words (user_id, word, part_of_speech, translation, is_public) 
-                    VALUES ($1, $2, $3, $4, $5) RETURNING id""",
-                    user_id,
-                    word,
-                    pos,
-                    value,
-                    is_public
+                    """
+                    INSERT INTO words (user_id, word, part_of_speech, translation, is_public) 
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (user_id, word) DO UPDATE
+                    SET part_of_speech = EXCLUDED.part_of_speech,
+                        translation = EXCLUDED.translation,
+                        created_at = EXCLUDED.created_at
+                    RETURNING id
+                    """,
+                    word_data.user_id,
+                    word_data.word,
+                    word_data.part_of_speech,
+                    word_data.translation,
+                    word_data.is_public
                 )
 
-                if context:
+                if word_data.context:
                     await conn.execute(
-                        """INSERT INTO contexts (user_id, word_id, context) 
-                        VALUES ($1, $2, $3)""",
-                        user_id, row["id"], context
+                        """
+                        INSERT INTO contexts (user_id, word_id, context) 
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (user_id, word_id) DO UPDATE
+                        SET context = EXCLUDED.context
+                        """,
+                        word_data.user_id, row["id"], word_data.context
                     )
 
-                if audio:
+                if word_data.audio:
                     await conn.execute(
-                        """INSERT INTO audios (user_id, audio_id, audio_url) 
-                        VALUES ($1, $2, $3)""",
-                        user_id, row["id"], audio
+                        """
+                        INSERT INTO audios (user_id, audio_id, audio_url) 
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (user_id, audio_id) DO UPDATE
+                        SET audio_url = EXCLUDED.audio_url
+                        """,
+                        word_data.user_id, row["id"], word_data.audio
                     )
 
 
             except Exception as e:
                 raise logger.error(f"Database error: {e}")
-
-
-    async def search_word(self, user_id: int, word: str) -> Optional[Dict[str, Any]]:
-        async with self.acquire_connection() as conn:
-            try:
-                row = await conn.fetchrow(
-                    """
-                    SELECT user_id, word, part_of_speech, translation, created_at
-                    FROM words WHERE user_id = $1 AND word = $2
-                    """, user_id, word
-                )
-                if row:
-                    return {
-                        "user_id": row["user_id"],
-                        "word": row["word"],
-                        "part_of_speech": row["part_of_speech"],
-                        "translation": row["translation"],
-                        "created_at": row["created_at"].isoformat()
-                    }
-                return None
-
-            except Exception as e:
-                logger.error(f"Database error in search_word: {e}")
-                return None
 
 
     async def delete_word(self, user_id: int, word_id: int) -> bool:
@@ -538,37 +464,33 @@ class DatabaseService:
             )
             return "DELETE" in result
 
-    async def update_word(
-            self, user_id: int, old_word: str, new_word: str, pos: str, value: str
-    ) -> bool:
-        async with self.user_locks[user_id]:
-            async with self.acquire_connection() as conn:
-                async with conn.transaction():
-                    if old_word != new_word:
-                        await conn.execute(
-                            "DELETE FROM words WHERE user_id = $1 AND word = $2",
-                            user_id,
-                            old_word,
-                        )
-                        await conn.execute(
-                            "INSERT INTO words (user_id, word, part_of_speech, translation) VALUES ($1, $2, $3, $4)",
-                            user_id,
-                            new_word,
-                            pos,
-                            value,
-                        )
-                        return True
-                    else:
-                        result = await conn.execute(
-                            """UPDATE words 
-                            SET part_of_speech = $1, translation = $2 
-                            WHERE user_id = $3 AND word = $4""",
-                            pos,
-                            value,
-                            user_id,
-                            new_word,
-                        )
-                        return "UPDATE" in result
+
+    async def search_words(self, word: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """ Ищет слова пользователей по критериям"""
+        async with self.acquire_connection() as conn:
+            try:
+                if word and user_id:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT user_id, word, part_of_speech, translation, created_at
+                        FROM words WHERE user_id = $1 AND word = $2
+                        """, user_id, word
+                    )
+                    return dict(row) if row else {}
+
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT user_id, word, part_of_speech, translation, created_at
+                        FROM words WHERE word = $1
+                        """, word
+                    )
+                    return { row['user_id']: dict(row) for row in rows }
+
+            except Exception as e:
+                logger.error(f"Database error in search_word: {e}")
+                return None
+
 
     async def mark_repeated_words(self, nickname: str, message: str) -> bool:
         """Помечает слова из сообщения как повторенные одним запросом"""
@@ -604,42 +526,28 @@ class DatabaseService:
                 "UPDATE users SET last_notified = $1 WHERE user_id = $2", curr_time, user_id
             )
 
-    # Temperorary solution
     async def get_user_stats(self, user_id: int):
         async with self.stats_lock:
             async with self.acquire_connection() as conn:
                 try:
-                    all_words_count_row = await conn.fetchrow(
+                    row = await conn.fetchrow(
                         """
                         SELECT
                           COUNT(*) FILTER (WHERE part_of_speech = 'noun') AS nouns,
                           COUNT(*) FILTER (WHERE part_of_speech = 'verb') AS verbs,
                           COUNT(*) FILTER (WHERE part_of_speech = 'adjective') AS adjectives,
                           COUNT(*) FILTER (WHERE part_of_speech = 'adverb') AS adverbs,
-                          COUNT(*) FILTER (WHERE part_of_speech = 'other') AS other
+                          COUNT(*) FILTER (WHERE part_of_speech = 'other') AS others
                         FROM words
                         WHERE user_id = $1
                         """,
                         user_id,
                     )
 
-                    if not all_words_count_row:
-                        return 0, 0, 0
-
-                    # Преобразуем None в 0 и суммируем
-                    nouns = all_words_count_row.get('nouns', 0) or 0
-                    verbs = all_words_count_row.get('verbs', 0) or 0
-                    adjectives = all_words_count_row.get('adjectives', 0) or 0
-                    adverbs = all_words_count_row.get('adverbs', 0) or 0
-                    other = all_words_count_row.get('other', 0) or 0
-
-                    total = nouns + verbs + adjectives + adverbs + other
-
-                    return total, nouns, verbs
+                    return Stats(**row)
 
                 except Exception as e:
                     logger.error(f"Database error in get_user_stats: {e}")
-                    return 0, 0, 0
 
     async def get_user_stats_last_week(self, user_id: int):
         async with self.stats_lock:
@@ -708,80 +616,6 @@ class DatabaseService:
                 """, current_time
             )
 
-    async def create_report(self, user_id: int) -> int:
-        async with self.acquire_connection() as conn:
-            return await conn.fetchval(
-                "INSERT INTO weekly_reports (user_id) VALUES ($1) RETURNING report_id",
-                user_id,
-            )
-
-    async def add_words_to_report(self, report_id: int, report_type: str, words: List[Dict]):
-        async with self.acquire_connection() as conn:
-            if report_type == config.SENTENCE:
-                for item in words:
-                    await conn.execute(
-                        "INSERT INTO report_sentences (report_id, word, sentence, audio_url, options, correct_index) "
-                        "VALUES ($1, $2, $3, $4, $5, $6)",
-                        report_id,
-                        item["word"],
-                        item["sentence"],
-                        item["audio_url"],
-                        item["options"],
-                        item["correct_index"],
-                    )
-            elif report_type == config.TRANSLATION:
-                for item in words:
-                    await conn.execute(
-                        "INSERT INTO report_translations (report_id, word, audio_url, options, correct_index) "
-                        "VALUES ($1, $2, $3, $4, $5)",
-                        report_id,
-                        item["word"],
-                        item["audio_url"],
-                        item["options"],
-                        item["correct_index"],
-                    )
-            elif report_type == config.SYNONYM:
-                for item in words:
-                    await conn.execute(
-                        "INSERT INTO report_synonyms (report_id, word, options, correct_index) "
-                        "VALUES ($1, $2, $3, $4)",
-                        report_id,
-                        item["word"],
-                        item["options"],
-                        item["correct_index"],
-                    )
-
-    async def get_report(self, report_id):
-        async with self.acquire_connection() as conn:
-            return await conn.fetchrow(
-                "SELECT * FROM weekly_reports WHERE report_id = $1", report_id
-            )
-
-    async def get_word_data(self, word_id):
-        async with self.acquire_connection() as conn:
-            return await conn.fetchrow(
-                "SELECT * FROM report_words WHERE word_id = $1", word_id
-            )
-
-    async def get_weekly_words(self, report_id):
-        async with self.acquire_connection() as conn:
-            result = await conn.fetch(
-                "SELECT * FROM report_words WHERE report_id = $1", report_id
-            )
-            return [dict(row) for row in result]
-
-    async def get_words_ids(self, report_id):
-        async with self.acquire_connection() as conn:
-            return await conn.fetch(
-                "SELECT word_id FROM report_words WHERE report_id = $1", report_id
-            )
-
-    async def get_pending_reports(self) -> List[Dict]:
-        async with self.acquire_connection() as conn:
-            return await conn.fetch(
-                "SELECT report_id, user_id FROM weekly_reports WHERE sent = FALSE AND status = 'OK'"
-            )
-
     async def update_word_state(self, user_id: int, word: str, correct: bool):
         async with self.acquire_connection() as conn:
             await conn.execute(
@@ -807,6 +641,12 @@ class DatabaseService:
             """, user_id, word, correct
             )
 
+    async def is_user_blocked(self, user_id: int) -> bool:
+        async with self.acquire_connection() as conn:
+            return await conn.fetchval(
+                "SELECT blocked_bot FROM users WHERE user_id = $1", user_id
+            )
+
     async def mark_user_as_blocked(self, user_id: int):
         async with self.acquire_connection() as conn:
             await conn.execute(
@@ -814,53 +654,6 @@ class DatabaseService:
                 user_id,
             )
             logger.info(f"Пользователь {user_id} помечен как заблокированный в БД.")
-
-    # Обновить mark_report_as_sent для приема статуса
-    async def mark_report_as_sent(self, report_id: int, status: str = "OK"):
-        async with self.acquire_connection() as conn:
-            await conn.execute(
-                "UPDATE weekly_reports SET generation_date = NOW(), sent = TRUE, status = $1 WHERE report_id = $2",
-                status,
-                report_id,
-            )
-            logger.info(f"Отчет {report_id} помечен как {status} в БД.")
-
-    async def is_user_blocked(self, user_id: int) -> bool:
-        async with self.acquire_connection() as conn:
-            return await conn.fetchval(
-                "SELECT blocked_bot FROM users WHERE user_id = $1", user_id
-            )
-
-    async def cleanup_old_reports(self, days: int) -> Tuple[int, int]:
-        cutoff_date = datetime.now() - timedelta(days=days)
-        async with self.acquire_connection() as conn:
-            words_rows = await conn.fetch(
-                "DELETE FROM report_words "
-                "WHERE report_id IN ("
-                "   SELECT report_id FROM weekly_reports "
-                "   WHERE generation_date < $1"
-                ") RETURNING word_id",
-                cutoff_date,
-            )
-            reports_rows = await conn.fetch(
-                "DELETE FROM weekly_reports WHERE generation_date < $1 RETURNING report_id",
-                cutoff_date,
-            )
-            return len(reports_rows), len(words_rows)
-
-    async def create_match_id(self, match_id: str) -> None:
-        async with self.acquire_connection() as conn:
-            await conn.execute("""
-            INSERT INTO match_ids (match_id) VALUES ($1)
-            """, match_id
-                               )
-
-    def clean_locks(self):
-        """Периодически очищаем неиспользуемые блокировки"""
-        user_ids = list(self.user_locks.keys())
-        for user_id in user_ids:
-            if user_id in self.user_locks and not self.user_locks[user_id].locked():
-                del self.user_locks[user_id]
 
     async def disconnect(self):
         if self.initialized:

@@ -1,8 +1,10 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Optional, List, Any
 
 from pydantic import BaseModel, Field, field_validator
+
+from src.config import config
 
 
 class Target(str, Enum):
@@ -88,6 +90,27 @@ class Profile(BaseModel):
                     continue
 
             raise ValueError(f"Invalid date format: {value}")
+
+class Payment(BaseModel):
+    """
+    Модель платежа (для базы данных).
+    """
+
+    user_id: int = Field(..., description="User ID")
+    amount: Optional[float] = Field(
+        199.00, description="Amount of payment in rubles user agreed to pay"
+    )
+    period: Optional[str] = Field(
+        "trial", description="Period of payment", examples=["month", "year"]
+    )
+    trial: Optional[bool] = Field(True, description="If it is trial period for user")
+    is_active: Optional[bool] = Field(True, description='If this subscription is still active')
+    until: Optional[datetime] = Field(
+        default=datetime.now(tz=config.tz_info) + timedelta(days=3), description="Trial period"
+    )
+
+    currency: Optional[str] = Field("RUB", description="Currency of payment")
+    payment_id: Optional[str] = Field(None, description="Payment ID")
 
 
 class Location(BaseModel):

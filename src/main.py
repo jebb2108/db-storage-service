@@ -10,11 +10,12 @@ from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
 from starlette.middleware.cors import CORSMiddleware
 
-from endpoints.handlers import router
+from endpoints.handlers import router as handlers_router
+from endpoints.words import router as words_router
 from src.config import config
 from src.dependencies import get_database
 from src.logconf import opt_logger as log
-from src.models import User, Profile
+from src.models import User, Profile, Word
 
 logger = log.setup_logger('worker')
 broker = RabbitBroker(config.rabbit.url, logger=logger)
@@ -63,17 +64,7 @@ async def add_user(data: dict) -> None:
 async def add_profile(data: dict) -> None:
     database = await get_database()
     profile = json.loads(data["profile"])
-    # Создает pydantic модель
-    profile_data = Profile(
-        user_id=profile.get('user_id'),
-        nickname=profile.get('nickname', 'anon'),
-        email=profile.get('email', 'example@example.com'),
-        gender=profile.get('gender', 'male'),
-        intro=profile.get('intro', 'no intro'),
-        dating= profile.get('dating', False),
-        birthday=profile.get('birthday', '01-01-1999')
-    )
-    # Сохраняет в БД
+    profile_data = Profile(**profile)
     await database.save_profile(profile_data)
 
 
@@ -81,11 +72,36 @@ async def add_profile(data: dict) -> None:
 async def add_location(data: dict) -> None:
     database = await get_database()
     location = json.loads(data["location"])
-    await database.save_location(**location)
+    await database.save_location(location)
+
+
+@register_purpose(config.purpose.add_word)
+async def add_word(data: dict) -> None:
+    database = await get_database()
+    word = json.loads(data["word"])
+    word_data = Word(**word)
+    await database.save_word(word_data)
 
 
 @broker.subscriber(config.rabbit.queue.new_users)
 async def handle_new_users(data: dict, msg: RabbitMessage):
+    """ Находит обработчик для запроса в БД """
+    logger.info(f'Received message: {data}')
+    try:
+        purpose = data.get("purpose")
+        handler = purposes.get(purpose)
+        # Вызываем соответствующий обработчик
+        if handler: await handler(data)
+
+        logger.info(f"Successfully processed message with purpose: {purpose}")
+
+    except Exception as e:
+        logger.error(f"Error in DB execution: {e}")
+
+    finally: await msg.ack()
+
+@broker.subscriber(config.rabbit.queue.new_words)
+async def handle_new_words(data: dict, msg: RabbitMessage):
     """ Находит обработчик для запроса в БД """
     logger.info(f'Received message: {data}')
     try:
@@ -139,7 +155,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+app.include_router(handlers_router)
+app.include_router(words_router)
 
 
 if __name__ == "__main__":
