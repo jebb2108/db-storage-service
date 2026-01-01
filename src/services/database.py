@@ -383,6 +383,7 @@ class DatabaseService:
                         [ word_dict[int(row["user_id"])].append(Word(**row)) for row in rows ]
                         logger.info(f'words: {word_dict}')
                         return word_dict
+
                 else:
                     rows = await conn.fetch(
                         """
