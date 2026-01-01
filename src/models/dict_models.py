@@ -9,6 +9,7 @@ class Word(BaseModel):
     """
     id: Optional[int] = Field(None, description="Уникальный идентификатор слова в базе данных")
     user_id: int = Field(..., description="Уникальный идентификатор пользователя")
+    nickname: str = Field(..., description="Никнейм пользователя")
     word: Union[str, None] = Field(None, description="Слово, которое нужно добавить в словарь")
     part_of_speech: Union[str, None] = Field(None, description="Часть речи слова")
     translation: Union[str, None] = Field(None, description="Перевод слова")

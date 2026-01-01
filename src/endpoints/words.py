@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING, Dict, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.params import Query
 
 from src.dependencies import get_database, get_rabbit
@@ -20,7 +20,7 @@ async def get_words_handler(
     database: "DatabaseService" = Depends(get_database)
 ):
     """ Перенаправляет запрос на получение слова пользователя """
-    return await database.query_words_by_user_id(user_id)
+    return await database.query_words(user_id=user_id, word=None)
 
 
 
@@ -50,7 +50,10 @@ async def api_search_word_handler(
         database: "DatabaseService" = Depends(get_database)
 ):
     # Ищем слово от пользователя
-    return await database.search_words(word, user_id)
+
+    return await database.query_words(user_id=user_id, word=word)
+
+
 
 
 

@@ -361,45 +361,42 @@ class DatabaseService:
             return dict(row) if row else None
 
 
-    async def query_words_by_user_id(self, user_id: int):
+    async def query_words(self, user_id: Optional[int] = None, word: Optional[str] = None):
         try:
             async with self.acquire_connection() as conn:
+                if user_id and not word:
+                        rows = await conn.fetch(
+                            """
+                            SELECT 
+                                w.id, w.user_id, p.nickname, w.word, 
+                                w.part_of_speech, w.translation, w.is_public, c.context
+                            FROM words w
+                            LEFT JOIN contexts c
+                                ON w.id = c.word_id
+                            LEFT JOIN profiles p
+                                ON p.user_id = w.user_id 
+                            WHERE w.user_id = $1 
+                            ORDER BY w.word""",
+                            user_id,
+                        )
+                        word_dict = defaultdict(list)
+                        [ word_dict[int(row["user_id"])].append(Word(**row)) for row in rows ]
+                        return word_dict
+                else:
                     rows = await conn.fetch(
                         """
-                        SELECT w.id, w.user_id, w.word, w.part_of_speech
-                        ,w.translation, w.is_public, c.context
+                        SELECT p.nickname, w.user_id, w.word, 
+                        w.part_of_speech, w.translation, w.created_at
                         FROM words w
-                        LEFT JOIN contexts c
-                            ON w.id = c.word_id
-                        WHERE w.user_id = $1 
-                        ORDER BY w.word""",
-                        user_id,
+                        LEFT JOIN profiles p 
+                            ON w.user_id = p.user_id
+                        WHERE w.word = $1 AND 
+                            w.is_public = true AND 
+                            p.nickname IS NOT NULL
+                        """, word
                     )
-                    word_dict = defaultdict(list)
-                    [ word_dict[int(row["user_id"])].append(Word(**row)) for row in rows ]
-                    return word_dict
 
-        except Exception as e:
-            logger.error(f"Database error: {e}")
-
-
-    async def query_words_by_word(self, word: str):
-        try:
-            async with self.acquire_connection() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT p.nickname, w.user_id, w.word, 
-                    w.part_of_speech, w.translation, w.created_at
-                    FROM words w
-                    LEFT JOIN profiles p 
-                        ON w.user_id = p.user_id
-                    WHERE w.word = $1 AND 
-                        w.is_public = true AND 
-                        p.nickname IS NOT NULL
-                    """, word
-                )
-
-                return { int(row["user_id"]): dict(row) for row in rows }
+                    return {int(row["user_id"]): Word(**row) for row in rows}
 
         except Exception as e:
             logger.error(f"Database error: {e}")
@@ -463,43 +460,6 @@ class DatabaseService:
                 "DELETE FROM words WHERE user_id = $1 AND id = $2", user_id, word_id
             )
             return "DELETE" in result
-
-
-    async def search_words(self, word: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        """ Ищет слова пользователей по критериям"""
-        async with self.acquire_connection() as conn:
-            try:
-                if word and user_id:
-                    row = await conn.fetchrow(
-                        """
-                        SELECT 
-                            w.user_id, p.nickname, w.word, 
-                            w.part_of_speech, w.translation, w.created_at
-                        FROM words w
-                        LEFT JOIN profiles p
-                            ON w.user_id = p.user_id
-                        WHERE w.user_id = $1 AND w.word = $2
-                        """, user_id, word
-                    )
-                    return dict(row) if row else {}
-
-                else:
-                    rows = await conn.fetch(
-                        """
-                        SELECT 
-                            w.user_id, p.nickname, w.word, 
-                            w.part_of_speech, w.translation, w.created_at
-                        FROM words w 
-                        LEFT JOIN profiles p
-                            ON w.user_id = p.user_id
-                        WHERE w.word = $1
-                        """, word
-                    )
-                    return { row['user_id']: dict(row) for row in rows }
-
-            except Exception as e:
-                logger.error(f"Database error in search_word: {e}")
-                return None
 
 
     async def mark_repeated_words(self, nickname: str, message: str) -> bool:
