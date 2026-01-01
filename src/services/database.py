@@ -371,25 +371,27 @@ class DatabaseService:
     async def query_words(self, user_id: Optional[int] = None, word: Optional[str] = None):
         try:
             async with self.acquire_connection() as conn:
-                if user_id and word:
-                        rows = await conn.fetch(
-                            """
-                            SELECT 
-                                w.id, w.user_id, p.nickname, w.word, 
-                                w.part_of_speech, w.translation, w.is_public, c.context
-                            FROM words w
-                            LEFT JOIN contexts c
-                                ON w.id = c.word_id
-                            LEFT JOIN profiles p
-                                ON p.user_id = w.user_id 
-                            WHERE w.user_id = $1 
-                            ORDER BY w.word""",
-                            user_id,
-                        )
-                        word_dict = defaultdict(list)
-                        [ word_dict[int(row["user_id"])].append(Word(**row)) for row in rows ]
-                        logger.info(f'words: {word_dict}')
-                        return word_dict
+
+                if user_id:
+                    word = word if word else ''
+                    rows = await conn.fetch(
+                        """
+                        SELECT 
+                            w.id, w.user_id, p.nickname, w.word, 
+                            w.part_of_speech, w.translation, w.is_public, c.context
+                        FROM words w
+                        LEFT JOIN contexts c
+                            ON w.id = c.word_id
+                        LEFT JOIN profiles p
+                            ON p.user_id = w.user_id 
+                        WHERE w.user_id = $1 AND w.word = $2 OR 1
+                        ORDER BY w.word""",
+                        user_id, word
+                    )
+                    word_dict = defaultdict(list)
+                    [word_dict[int(row["user_id"])].append(Word(**row)) for row in rows]
+                    logger.info(f'words: {word_dict}')
+                    return word_dict
 
                 else:
                     rows = await conn.fetch(
