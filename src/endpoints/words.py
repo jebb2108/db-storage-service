@@ -33,10 +33,7 @@ async def save_word_handler(
     if not await database.word_exists(word_data):
         await rabbit.publish_word(word_data)
     else:
-        return 401, 'Word already exists'
-
-
-
+        return HTTPException(status_code=401, detail='Word Already Exists')
 
 
 @router.delete("/words")
