@@ -371,7 +371,7 @@ class DatabaseService:
     async def query_words(self, user_id: Optional[int] = None, word: Optional[str] = None):
         try:
             async with self.acquire_connection() as conn:
-                if user_id and not word:
+                if user_id and word:
                         rows = await conn.fetch(
                             """
                             SELECT 
