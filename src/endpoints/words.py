@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.params import Query
 
 from src.dependencies import get_database, get_rabbit
@@ -27,9 +27,15 @@ async def get_words_handler(
 @router.post('/words')
 async def save_word_handler(
         word_data: Word,
-        rabbit: "RabbitMQService" = Depends(get_rabbit)
+        rabbit: "RabbitMQ-Service" = Depends(get_rabbit),
+        database: "DatabaseService" = Depends(get_database)
 ):
-    await rabbit.publish_word(word_data)
+    if not await database.word_exists(word_data):
+        await rabbit.publish_word(word_data)
+    else:
+        raise HTTPException(status_code=401, detail='Word already exists')
+
+
 
 
 

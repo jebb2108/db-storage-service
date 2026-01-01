@@ -360,6 +360,13 @@ class DatabaseService:
             )
             return dict(row) if row else None
 
+    async def word_exists(self, word_data: Word):
+        async with self.acquire_connection() as conn:
+            return bool(await conn.fetchrow(
+                'SELECT 1 FROM words WHERE user_id = $1 AND word = $2',
+                word_data.user_id, word_data.word)
+            )
+
 
     async def query_words(self, user_id: Optional[int] = None, word: Optional[str] = None):
         try:
