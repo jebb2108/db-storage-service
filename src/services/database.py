@@ -384,9 +384,9 @@ class DatabaseService:
                             ON w.id = c.word_id
                         LEFT JOIN profiles p
                             ON p.user_id = w.user_id 
-                        WHERE w.user_id = $1 AND w.word = $2 OR TRUE
+                        WHERE w.user_id = $1 AND w.word = $2
                         ORDER BY w.word""",
-                        user_id, word
+                        user_id, word if word else 'TRUE'
                     )
                     word_dict = defaultdict(list)
                     [word_dict[int(row["user_id"])].append(Word(**row)) for row in rows]
