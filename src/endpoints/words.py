@@ -27,7 +27,7 @@ async def get_words_handler(
 @router.post('/words')
 async def save_word_handler(
         word_data: Word,
-        rabbit: "RabbitMQ-Service" = Depends(get_rabbit),
+        rabbit: "RabbitMQService" = Depends(get_rabbit),
         database: "DatabaseService" = Depends(get_database)
 ):
     if not await database.word_exists(word_data):
