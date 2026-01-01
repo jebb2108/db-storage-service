@@ -397,7 +397,7 @@ class DatabaseService:
                         *params
                     )
                     word_dict = defaultdict(list)
-                    [word_dict[int(row["user_id"])].append(Word(**row)) for row in rows]
+                    [word_dict[int(row["user_id"])].append(Word(**dict(row))) for row in rows]
                     logger.info(f'words: {word_dict}')
                     return word_dict
 
@@ -413,7 +413,7 @@ class DatabaseService:
                         """, word
                     )
                     logger.info(f'Raw data: {rows}')
-                    return {int(row["user_id"]): Word(**row) for row in rows}
+                    return {int(row["user_id"]): Word(**dict(row)) for row in rows}
 
         except Exception as e:
             logger.error(f"Database error: {e}")
