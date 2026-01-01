@@ -392,9 +392,7 @@ class DatabaseService:
                         FROM words w
                         LEFT JOIN profiles p 
                             ON w.user_id = p.user_id
-                        WHERE w.word = $1 AND 
-                            w.is_public = true AND 
-                            p.nickname IS NOT NULL
+                        WHERE w.word = $1 AND w.is_public = true
                         """, word
                     )
                     logger.info(f'Raw data: {rows}')
