@@ -1,4 +1,5 @@
-from typing import Union, Optional
+from datetime import datetime, date
+from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -18,6 +19,15 @@ class Word(BaseModel):
     context: Optional[str] = Field(None, description="Контекст к слову")
     audio: Optional[bytes] = Field(None, description="bytes of audio recording")
 
+    @model_validator(mode='before')
+    def set_datetime_to_string(self) -> 'Word':
+        if isinstance(self.created_at, datetime):
+            self.created_at = self.created_at.date().isoformat()
+
+        elif isinstance(self.created_at, date):
+            self.created_at = self.created_at.isoformat()
+
+        return self
 
 class Stats(BaseModel):
     """
