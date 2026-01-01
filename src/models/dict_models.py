@@ -14,6 +14,7 @@ class Word(BaseModel):
     part_of_speech: Optional[str] = Field(None, description="Часть речи слова")
     translation: Optional[str] = Field(None, description="Перевод слова")
     is_public: bool = Field(False, description="Видно ли слово остальным пользователям")
+    created_at: Optional[str] = Field(None, description="Время создания карточки со словом")
     context: Optional[str] = Field(None, description="Контекст к слову")
     audio: Optional[bytes] = Field(None, description="bytes of audio recording")
 

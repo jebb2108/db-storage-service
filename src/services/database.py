@@ -385,7 +385,8 @@ class DatabaseService:
                         f"""
                         SELECT 
                             w.id, w.user_id, p.nickname, w.word, 
-                            w.part_of_speech, w.translation, w.is_public, c.context
+                            w.part_of_speech, w.translation, w.is_public, 
+                            w.created_at, c.context
                         FROM words w
                         LEFT JOIN contexts c
                             ON w.id = c.word_id
