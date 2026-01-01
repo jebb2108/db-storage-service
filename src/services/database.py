@@ -398,7 +398,7 @@ class DatabaseService:
                     )
                     word_dict = defaultdict(list)
                     [word_dict[int(row["user_id"])].append(Word(**dict(row))) for row in rows]
-                    logger.info(f'words: {word_dict}')
+                    logger.debug(f'words: {word_dict}')
                     return word_dict
 
                 else:
@@ -412,7 +412,7 @@ class DatabaseService:
                         WHERE w.word = $1 AND w.is_public = true AND p.nickname IS NOT NULL
                         """, word
                     )
-                    logger.info(f'Raw data: {rows}')
+                    logger.debug(f'Raw data: {rows}')
                     return {int(row["user_id"]): Word(**dict(row)) for row in rows}
 
         except Exception as e:
