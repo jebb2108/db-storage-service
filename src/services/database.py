@@ -373,9 +373,16 @@ class DatabaseService:
             async with self.acquire_connection() as conn:
 
                 if user_id:
-                    word = word if word else ''
+
+                    where_condition = "w.user_id = $1"
+                    params = [user_id]
+
+                    if word:
+                        where_condition += " AND w.word = $2"
+                        params.append(word)
+
                     rows = await conn.fetch(
-                        """
+                        f"""
                         SELECT 
                             w.id, w.user_id, p.nickname, w.word, 
                             w.part_of_speech, w.translation, w.is_public, c.context
@@ -384,9 +391,9 @@ class DatabaseService:
                             ON w.id = c.word_id
                         LEFT JOIN profiles p
                             ON p.user_id = w.user_id 
-                        WHERE w.user_id = $1 AND w.word = $2
+                        WHERE {where_condition}
                         ORDER BY w.word""",
-                        user_id, word if word else 'TRUE'
+                        *params
                     )
                     word_dict = defaultdict(list)
                     [word_dict[int(row["user_id"])].append(Word(**row)) for row in rows]
