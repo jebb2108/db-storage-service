@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Any
+from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.params import Query
@@ -46,7 +46,7 @@ async def api_delete_word_handler(
 @router.get("/words/search")
 async def api_search_word_handler(
         word: str = Query(..., description="Слово для поиска среди пользователей"),
-        user_id: int = Query(..., description="User ID пользователя"),
+        user_id: Optional[int] = Query(None, description="User ID пользователя"),
         database: "DatabaseService" = Depends(get_database)
 ):
     # Ищем слово от пользователя
