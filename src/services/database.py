@@ -384,7 +384,7 @@ class DatabaseService:
                             ON w.id = c.word_id
                         LEFT JOIN profiles p
                             ON p.user_id = w.user_id 
-                        WHERE w.user_id = $1 AND w.word = $2 OR 1
+                        WHERE w.user_id = $1 AND w.word = $2 OR TRUE
                         ORDER BY w.word""",
                         user_id, word
                     )
