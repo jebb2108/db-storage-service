@@ -381,6 +381,7 @@ class DatabaseService:
                         )
                         word_dict = defaultdict(list)
                         [ word_dict[int(row["user_id"])].append(Word(**row)) for row in rows ]
+                        logger.info('words: ', word_dict)
                         return word_dict
                 else:
                     rows = await conn.fetch(
@@ -395,7 +396,7 @@ class DatabaseService:
                             p.nickname IS NOT NULL
                         """, word
                     )
-
+                    logger.info('Raw data:', rows)
                     return {int(row["user_id"]): Word(**row) for row in rows}
 
         except Exception as e:
