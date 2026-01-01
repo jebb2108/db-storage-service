@@ -472,8 +472,13 @@ class DatabaseService:
                 if word and user_id:
                     row = await conn.fetchrow(
                         """
-                        SELECT user_id, word, part_of_speech, translation, created_at
-                        FROM words WHERE user_id = $1 AND word = $2
+                        SELECT 
+                            w.user_id, p.nickname, w.word, 
+                            w.part_of_speech, w.translation, w.created_at
+                        FROM words w
+                        LEFT JOIN profiles p
+                            ON w.user_id = p.user_id
+                        WHERE w.user_id = $1 AND w.word = $2
                         """, user_id, word
                     )
                     return dict(row) if row else {}
@@ -481,8 +486,13 @@ class DatabaseService:
                 else:
                     rows = await conn.fetch(
                         """
-                        SELECT user_id, word, part_of_speech, translation, created_at
-                        FROM words WHERE word = $1
+                        SELECT 
+                            w.user_id, p.nickname, w.word, 
+                            w.part_of_speech, w.translation, w.created_at
+                        FROM words w 
+                        LEFT JOIN profiles p
+                            ON w.user_id = p.user_id
+                        WHERE w.word = $1
                         """, word
                     )
                     return { row['user_id']: dict(row) for row in rows }
