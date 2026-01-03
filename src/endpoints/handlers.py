@@ -31,6 +31,13 @@ async def check_user_exists(
 ):
     return await database.user_exists(user_id)
 
+@router.get('/profile_exists')
+async def check_profile_exists(
+        user_id: int = Query(..., description='User ID', examples=[123]),
+        database: "DatabaseService" = Depends(get_database)
+):
+    return await database.profile_exists(user_id)
+
 @router.get('/nickname_exists')
 async def check_nickname_exists(
         nickname: str = Query(..., description='some user`s nickname'),

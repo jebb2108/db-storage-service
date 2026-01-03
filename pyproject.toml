@@ -1,6 +1,6 @@
 [project]
 name = "db-storage-service"
-version = "0.5.1"
+version = "0.6.0"
 description = "Service for Managing DB Storage"
 authors = [
     {name = "Gabriel Bouchard",email = "gabouchard2002@gmail.com"}
