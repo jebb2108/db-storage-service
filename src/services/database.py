@@ -37,6 +37,7 @@ class DatabaseService:
             await self.__create_profiles()
             await self.__create_locations()
             await self.__create_words()
+            await self.__create_translations()
             await self.__create_contexts()
             await self.__create_audios()
 
@@ -77,8 +78,6 @@ class DatabaseService:
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
                 word VARCHAR(100) NOT NULL,
-                part_of_speech VARCHAR(50) NOT NULL,
-                translation TEXT NOT NULL,
                 is_public BOOLEAN DEFAULT FALSE,
                 word_state VARCHAR(20) DEFAULT 'NEW',
                 emotion VARCHAR(20) DEFAULT 'NEUTRAL',
@@ -88,6 +87,21 @@ class DatabaseService:
                 ); 
             """
             )
+
+    async def __create_translations(self):
+        # Таблица для переводов и частей речи (несколько записей на слово)
+        async with self.acquire_connection() as conn:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS word_translations (
+                    id SERIAL PRIMARY KEY,
+                    word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+                    translation VARCHAR(255) NOT NULL,
+                    part_of_speech VARCHAR(50) NOT NULL,
+                    UNIQUE (word_id, translation, part_of_speech)
+                    );
+                """
+                )
 
     async def __create_contexts(self):
         async with self.acquire_connection() as conn:
@@ -427,10 +441,13 @@ class DatabaseService:
             )
             if not is_active: raise PaymentException
             try:
+
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO words (user_id, word, part_of_speech, translation, is_public) 
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO words (
+                        user_id, word, is_public
+                    ) 
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     ON CONFLICT (user_id, word) DO UPDATE
                     SET part_of_speech = EXCLUDED.part_of_speech,
                         translation = EXCLUDED.translation,
@@ -439,10 +456,16 @@ class DatabaseService:
                     """,
                     word_data.user_id,
                     word_data.word,
-                    word_data.part_of_speech,
-                    word_data.translation,
                     word_data.is_public
                 )
+
+                for trnsl, pos in word_data.translations.items():
+                    await conn.execute(
+                        """
+                        INSERT INTO translations (word_id, translation, part_of_speech) 
+                        VALUES ($1, $2, $3)
+                        """, row['id'], trnsl, pos
+                    )
 
                 if word_data.context:
                     await conn.execute(

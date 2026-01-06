@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, Dict
 
 from pydantic import BaseModel, Field, model_validator, field_validator
 
@@ -8,13 +8,11 @@ from src.config import config
 
 class Word(BaseModel):
     """
-    Модель слова для отображения на frontend
+    Модель слова пользователя (для базы данных)
     """
-    id: Optional[int] = Field(None, description="Уникальный идентификатор слова в базе данных")
     user_id: int = Field(..., description="Уникальный идентификатор пользователя")
     word: Optional[str] = Field(None, description="Слово, которое нужно добавить в словарь")
-    part_of_speech: Optional[str] = Field(None, description="Часть речи слова")
-    translation: Optional[str] = Field(None, description="Перевод слова")
+    translations: Optional[dict] = Field(None, description="Перевод слова")
     is_public: bool = Field(False, description="Видно ли слово остальным пользователям")
     created_at:Optional[Any] = Field(None, description="Время создания карточки со словом")
     context: Optional[str] = Field(None, description="Контекст к слову")
