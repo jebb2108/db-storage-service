@@ -453,14 +453,8 @@ class DatabaseService:
 
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO words (
-                        user_id, word, is_public
-                    ) 
+                    INSERT INTO words (user_id, word, is_public) 
                     VALUES ($1, $2, $3)
-                    ON CONFLICT (user_id, word) DO UPDATE
-                    SET part_of_speech = EXCLUDED.part_of_speech,
-                        translation = EXCLUDED.translation,
-                        created_at = EXCLUDED.created_at
                     RETURNING id
                     """,
                     word_data.user_id,
