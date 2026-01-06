@@ -425,7 +425,7 @@ class DatabaseService:
 
                 translations = {}
                 for wid in [row['id'] for row in rows]:
-                    trnsl_rows = await conn.fetchrows(
+                    trnsl_rows = await conn.fetchrow(
                         """
                         SELECT translation, part_of_speech
                         FROM translations where word_id = $1
