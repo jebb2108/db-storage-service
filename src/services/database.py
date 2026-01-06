@@ -387,7 +387,7 @@ class DatabaseService:
             async with self.acquire_connection() as conn:
 
                 if user_id:
-
+                    # Поиск слов по user_id пользователя
                     where_condition = "w.user_id = $1"
                     params = [user_id]
 
@@ -399,35 +399,44 @@ class DatabaseService:
                         f"""
                         SELECT 
                             w.id, w.user_id, p.nickname, w.word, 
-                            w.part_of_speech, w.translation, w.is_public, 
-                            w.created_at, c.context
+                            w.is_public, w.created_at, c.context
                         FROM words w
                         LEFT JOIN contexts c
                             ON w.id = c.word_id
                         LEFT JOIN profiles p
                             ON p.user_id = w.user_id 
                         WHERE {where_condition}
-                        ORDER BY w.word""",
+                        ORDER BY w.word
+                        """,
                         *params
                     )
-                    word_dict = defaultdict(list)
-                    [word_dict[int(row["user_id"])].append(Word(**dict(row))) for row in rows]
-                    logger.debug(f'words: {word_dict}')
-                    return word_dict
 
                 else:
+                    # Запрос для получения ВСЕХ публичных слов
                     rows = await conn.fetch(
                         """
-                        SELECT p.nickname, w.user_id, w.word, 
-                        w.part_of_speech, w.translation, w.created_at
+                        SELECT p.nickname, w.user_id, w.word, w.created_at
                         FROM words w
                         LEFT JOIN profiles p 
                             ON w.user_id = p.user_id
                         WHERE w.word = $1 AND w.is_public = true AND p.nickname IS NOT NULL
                         """, word
                     )
-                    logger.debug(f'Raw data: {rows}')
-                    return {int(row["user_id"]): Word(**dict(row)) for row in rows}
+
+                translations = {}
+                for wid in [row['id'] for row in rows]:
+                    trnsl_rows = await conn.fetchrows(
+                        """
+                        SELECT translation, part_of_speech
+                        FROM translations where word_id = $1
+                        """, wid
+                    )
+                    translations[wid] = {key: val for key, val in dict(trnsl_rows).items()}
+
+                word_dict = defaultdict(list)
+                [word_dict[int(row["user_id"])].append(Word(translations=translations, **dict(row))) for row in rows]
+                logger.debug(f'words: {word_dict}')
+                return word_dict
 
         except Exception as e:
             logger.error(f"Database error: {e}")
