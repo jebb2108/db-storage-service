@@ -93,7 +93,7 @@ class DatabaseService:
         async with self.acquire_connection() as conn:
             await conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS word_translations (
+                CREATE TABLE IF NOT EXISTS translations (
                     id SERIAL PRIMARY KEY,
                     word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
                     translation VARCHAR(255) NOT NULL,
@@ -494,7 +494,7 @@ class DatabaseService:
 
 
             except Exception as e:
-                raise logger.error(f"Database error: {e}")
+                logger.error(f"Database error: {e}")
 
 
     async def delete_word(self, user_id: int, word_id: int) -> bool:
