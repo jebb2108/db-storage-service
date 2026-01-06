@@ -456,7 +456,7 @@ class DatabaseService:
                     INSERT INTO words (
                         user_id, word, is_public
                     ) 
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    VALUES ($1, $2, $3)
                     ON CONFLICT (user_id, word) DO UPDATE
                     SET part_of_speech = EXCLUDED.part_of_speech,
                         translation = EXCLUDED.translation,
