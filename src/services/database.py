@@ -442,7 +442,7 @@ class DatabaseService:
             logger.error(f"Database error: {e}")
 
 
-    async def save_word(self, word_data: Word):
+    async def save_word(self, word_data: Word) -> None:
         async with self.acquire_connection() as conn:
 
             is_active = await conn.fetchval(
@@ -491,6 +491,8 @@ class DatabaseService:
                         """,
                         word_data.user_id, row["id"], word_data.audio
                     )
+
+                return
 
 
             except Exception as e:
@@ -546,13 +548,15 @@ class DatabaseService:
                     row = await conn.fetchrow(
                         """
                         SELECT
-                          COUNT(*) FILTER (WHERE part_of_speech = 'noun') AS nouns,
-                          COUNT(*) FILTER (WHERE part_of_speech = 'verb') AS verbs,
-                          COUNT(*) FILTER (WHERE part_of_speech = 'adjective') AS adjectives,
-                          COUNT(*) FILTER (WHERE part_of_speech = 'adverb') AS adverbs,
-                          COUNT(*) FILTER (WHERE part_of_speech = 'other') AS others
-                        FROM words
-                        WHERE user_id = $1
+                          COUNT(*) FILTER (WHERE t.part_of_speech = 'noun') AS nouns,
+                          COUNT(*) FILTER (WHERE t.part_of_speech = 'verb') AS verbs,
+                          COUNT(*) FILTER (WHERE t.part_of_speech = 'adjective') AS adjectives,
+                          COUNT(*) FILTER (WHERE t.part_of_speech = 'adverb') AS adverbs,
+                          COUNT(*) FILTER (WHERE t.part_of_speech = 'other') AS others
+                        FROM words w
+                        LEFT JOIN translations t
+                            ON w.id = t.word_id
+                        WHERE w.user_id = $1
                         """,
                         user_id,
                     )
