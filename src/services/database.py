@@ -424,7 +424,7 @@ class DatabaseService:
                     )
 
                 if not rows:
-                    return {str(user_id): []}
+                    return {}
 
                 # Собираем ID всех слов для получения переводов
                 word_ids = [row['id'] for row in rows]
@@ -490,7 +490,7 @@ class DatabaseService:
 
         except Exception as e:
             logger.error(f"Database error in query_words: {e}")
-            return {str(user_id): []}
+            return {}
 
 
     async def save_word(self, word_data: Word) -> None:
