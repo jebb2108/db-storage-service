@@ -20,11 +20,11 @@ async def get_words_handler(
     database: "DatabaseService" = Depends(get_database)
 ):
     """ Перенаправляет запрос на получение слова пользователя """
-    return await database.query_words(user_id=user_id, word=None)
+    await database.query_words(user_id=user_id, word=None)
+    return Response(status_code=200)
 
 
-
-@router.post('/words')
+@router.post("/words")
 async def save_word_handler(
         word_data: Word,
         response: "Response",
@@ -33,9 +33,24 @@ async def save_word_handler(
 ):
     if not await database.word_exists(word_data):
         await rabbit.publish_word(word_data)
+        return Response(status_code=200)
     else:
         response.status_code = status.HTTP_409_CONFLICT
         return {'status': 'Word Already Exists'}
+
+@router.put("/words")
+async def edit_word_handler(
+        word_data: Word,
+        response: "Response",
+        rabbit: "RabbitMQService" = Depends(get_rabbit),
+        database: "DatabaseService" = Depends(get_database)
+):
+    if await database.word_exists(word_data):
+        await rabbit.publish_word(word_data)
+        return Response(status_code=200)
+    else:
+        response.status_code = status.HTTP_409_CONFLICT
+        return {'status': 'Word Does Not Exist'}
 
 
 @router.delete("/words")
@@ -45,7 +60,7 @@ async def api_delete_word_handler(
         database: "DatabaseService" = Depends(get_database)
 ):
     await database.delete_word(user_id, word_id)
-
+    return Response(status_code=200)
 
 
 @router.get("/words/search")
@@ -56,10 +71,8 @@ async def api_search_word_handler(
 ):
     # Ищем слово от пользователя
 
-    return await database.query_words(user_id=user_id, word=word)
-
-
-
+    await database.query_words(user_id=user_id, word=word)
+    return Response(status_code=200)
 
 
 @router.get("/words/stats")
@@ -68,4 +81,5 @@ async def api_stats_handler(
         database: "DatabaseService" = Depends(get_database)
 ):
     """ Обработчик статистики слов пользователя """
-    return await database.get_user_stats(user_id)
+    await database.get_user_stats(user_id)
+    return Response(status_code=200)

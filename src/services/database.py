@@ -83,6 +83,8 @@ class DatabaseService:
                 emotion VARCHAR(20) DEFAULT 'NEUTRAL',
                 correct_spelling BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT NOW(),
+                edited_at TIMESTAMP DEFAULT NOW(),
+                edited BOOLEAN DEFAULT FALSE,
                 UNIQUE (user_id, word)
                 ); 
             """
@@ -504,6 +506,11 @@ class DatabaseService:
                     """
                     INSERT INTO words (user_id, word, is_public) 
                     VALUES ($1, $2, $3)
+                    ON CONFLICT (user_id, word) DO UPDATE
+                    SET word = EXCLUDED.word,
+                        is_public = EXCLUDED.is_public,
+                        edited_at = NOW(),
+                        edited = TRUE
                     RETURNING id
                     """,
                     word_data.user_id,
@@ -516,6 +523,7 @@ class DatabaseService:
                         """
                         INSERT INTO translations (word_id, translation, part_of_speech) 
                         VALUES ($1, $2, $3)
+                        ON CONFLICT (word_id, translation, part_of_speech) DO NOTHING
                         """, row['id'], trnsl, pos
                     )
 
