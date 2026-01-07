@@ -423,8 +423,10 @@ class DatabaseService:
                         """, word
                     )
 
-                if not rows:
-                    return {}
+                # Формируем результат в новом формате
+                result = defaultdict(list)
+
+                if not rows: return result
 
                 # Собираем ID всех слов для получения переводов
                 word_ids = [row['id'] for row in rows]
@@ -449,15 +451,10 @@ class DatabaseService:
                         'part_of_speech': row['part_of_speech']
                     })
 
-                # Формируем результат в новом формате
-                result = {}
 
                 for row in rows:
                     word_id = row['id']
-                    user_id_key = str(int(row["user_id"]))
-
-                    if user_id_key not in result:
-                        result[user_id_key] = []
+                    user_id_key = int(row["user_id"])
 
                     # Получаем переводы для текущего слова
                     word_translations = translations_by_word.get(word_id, [])
@@ -618,7 +615,7 @@ class DatabaseService:
                         user_id,
                     )
 
-                    return Stats(**row)
+                    return Stats(**row) if row else Stats()
 
                 except Exception as e:
                     logger.error(f"Database error in get_user_stats: {e}")
