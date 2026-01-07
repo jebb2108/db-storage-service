@@ -452,7 +452,7 @@ class DatabaseService:
 
                 for row in rows:
                     word_id = row['id']
-                    user_id_key = int(row["user_id"])
+                    user_id_key = str(int(row["user_id"]))
 
                     if user_id_key not in result:
                         result[user_id_key] = []
