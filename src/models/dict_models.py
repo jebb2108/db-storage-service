@@ -11,7 +11,7 @@ class Word(BaseModel):
     Модель слова пользователя (для базы данных)
     """
     id: Optional[int] = Field(None, description="Для корректной работы базы данных")
-    user_id: int = Field(..., description="Уникальный идентификатор пользователя")
+    user_id: str = Field(..., description="Уникальный идентификатор пользователя")
     nickname: Optional[str] = Field(None, description="Для отображения публичных слов и никнеймов к ним")
     word: Optional[str] = Field(None, description="Слово, которое нужно добавить в словарь")
     translations: Optional[dict] = Field(None, description="Перевод слова")
