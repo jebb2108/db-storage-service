@@ -381,11 +381,9 @@ class DatabaseService:
                 word_data.user_id, word_data.word)
             )
 
-
     async def query_words(self, user_id: Optional[int] = None, word: Optional[str] = None):
         try:
             async with self.acquire_connection() as conn:
-
                 if user_id:
                     # Поиск слов по user_id пользователя
                     where_condition = "w.user_id = $1"
@@ -415,7 +413,7 @@ class DatabaseService:
                     # Запрос для получения ВСЕХ публичных слов
                     rows = await conn.fetch(
                         """
-                        SELECT p.nickname, w.user_id, w.word, w.created_at
+                        SELECT w.id, p.nickname, w.user_id, w.word, w.created_at
                         FROM words w
                         LEFT JOIN profiles p 
                             ON w.user_id = p.user_id
@@ -423,23 +421,74 @@ class DatabaseService:
                         """, word
                     )
 
-                translations = {}
-                for wid in [row['id'] for row in rows]:
-                    trnsl_rows = await conn.fetchrow(
-                        """
-                        SELECT translation, part_of_speech
-                        FROM translations where word_id = $1
-                        """, wid
-                    )
-                    translations[wid] = {key: val for key, val in dict(trnsl_rows).items()}
+                if not rows:
+                    return {}
 
-                word_dict = defaultdict(list)
-                [word_dict[int(row["user_id"])].append(Word(translations=translations, **dict(row))) for row in rows]
-                logger.debug(f'words: {word_dict}')
-                return word_dict
+                # Собираем ID всех слов для получения переводов
+                word_ids = [row['id'] for row in rows]
+
+                # Получаем ВСЕ переводы для всех найденных слов одним запросом
+                translations_rows = await conn.fetch(
+                    """
+                    SELECT word_id, translation, part_of_speech
+                    FROM translations 
+                    WHERE word_id = ANY($1)
+                    ORDER BY word_id
+                    """,
+                    word_ids
+                )
+
+                # Группируем переводы по word_id
+                translations_by_word = defaultdict(list)
+                for row in translations_rows:
+                    word_id = row['word_id']
+                    translations_by_word[word_id].append({
+                        'translation': row['translation'],
+                        'part_of_speech': row['part_of_speech']
+                    })
+
+                # Формируем результат в новом формате
+                result = {}
+
+                for row in rows:
+                    word_id = row['id']
+                    user_id_key = int(row["user_id"])
+
+                    if user_id_key not in result:
+                        result[user_id_key] = []
+
+                    # Получаем переводы для текущего слова
+                    word_translations = translations_by_word.get(word_id, [])
+
+                    # Преобразуем переводы в новый формат: {'1': {...}, '2': {...}}
+                    translations_dict = {}
+                    for i, trans in enumerate(word_translations, 1):
+                        translations_dict[str(i)] = {
+                            'translation': trans['translation'],
+                            'part_of_speech': trans['part_of_speech']
+                        }
+
+                    # Создаем слово в новом формате
+                    word_obj = {
+                        'id': word_id,
+                        'user_id': row['user_id'],
+                        'nickname': row['nickname'],
+                        'word': row['word'],
+                        'translations': translations_dict,
+                        'is_public': row.get('is_public', False),
+                        'created_at': row['created_at'].isoformat(),
+                        'context': row.get('context'),
+                        'audio': None
+                    }
+
+                    result[user_id_key].append(Word(**word_obj))
+
+                logger.debug(f'Formatted words result: {result}')
+                return result
 
         except Exception as e:
-            logger.error(f"Database error: {e}")
+            logger.error(f"Database error in query_words: {e}")
+            return {}
 
 
     async def save_word(self, word_data: Word) -> None:
