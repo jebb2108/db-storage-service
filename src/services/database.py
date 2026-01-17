@@ -508,74 +508,115 @@ class DatabaseService:
             logger.error(f"Database error in query_words: {e}")
             return {}
 
-
     async def save_word(self, word_data: Word) -> None:
         async with self.acquire_connection() as conn:
-
-            is_active = await conn.fetchval(
-                "SELECT is_active FROM users WHERE user_id = $1", word_data.user_id
-            )
-            if not is_active: raise PaymentException
             try:
-
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO words (user_id, word, is_public) 
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (user_id, word) DO UPDATE
-                    SET word = EXCLUDED.word,
-                        is_public = EXCLUDED.is_public,
-                        edited_at = NOW(),
-                        edited = TRUE
-                    RETURNING id
-                    """,
-                    word_data.user_id,
-                    word_data.word,
-                    word_data.is_public
+                # 1. Проверка пользователя
+                is_active = await conn.fetchval(
+                    "SELECT is_active FROM users WHERE user_id = $1",
+                    word_data.user_id
                 )
+                if is_active is not True:
+                    raise PaymentException(f"User {word_data.user_id} is inactive or not found")
 
-                for trnsl, pos in word_data.translations.items():
-                    await conn.execute(
-                        """
-                        INSERT INTO translations (word_id, translation, part_of_speech) 
-                        VALUES ($1, $2, $3)
-                        ON CONFLICT (word_id, translation, part_of_speech) DO NOTHING
-                        """, row['id'], trnsl, pos
-                    )
+                async with conn.transaction():
 
-                if word_data.context:
-                    await conn.execute(
+                    # 2. Создание слова (или получение id существующего)
+                    row = await conn.fetchrow(
                         """
-                        INSERT INTO contexts (user_id, word_id, context) 
+                        INSERT INTO words (user_id, word, is_public)
                         VALUES ($1, $2, $3)
-                        ON CONFLICT (user_id, word_id) DO UPDATE
-                        SET context = EXCLUDED.context
+                        ON CONFLICT (user_id, word) DO NOTHING
+                        RETURNING id
                         """,
-                        word_data.user_id, row["id"], word_data.context
+                        word_data.user_id,
+                        word_data.word,
+                        word_data.is_public
                     )
 
-                if word_data.audio:
-                    await conn.execute(
-                        """
-                        INSERT INTO audios (user_id, audio_id, audio_url) 
-                        VALUES ($1, $2, $3)
-                        ON CONFLICT (user_id, audio_id) DO UPDATE
-                        SET audio_url = EXCLUDED.audio_url
-                        """,
-                        word_data.user_id, row["id"], word_data.audio
+                    if row is None:
+                        row = await conn.fetchrow(
+                            """
+                            UPDATE words
+                            SET is_public = $3,
+                                edited = TRUE,
+                                edited_at = NOW()
+                            WHERE user_id = $1 AND word = $2
+                            RETURNING id
+                            """,
+                            word_data.user_id,
+                            word_data.word,
+                            word_data.is_public
+                        )
+
+                    word_id: int = row["id"]
+
+                    # 3. Переводы
+                    if word_data.translations:
+                        await conn.executemany(
+                            """
+                            INSERT INTO translations (word_id, translation, part_of_speech)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (word_id, translation, part_of_speech) DO NOTHING
+                            """,
+                            [
+                                (word_id, translation, part)
+                                for translation, part in word_data.translations.items()
+                            ]
+                        )
+
+                    # 4. Контекст
+                    if word_data.context:
+                        await conn.execute(
+                            """
+                            INSERT INTO contexts (user_id, word_id, context)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (user_id, word_id) DO UPDATE
+                            SET context = EXCLUDED.context,
+                                edited = TRUE
+                            """,
+                            word_data.user_id,
+                            word_id,
+                            word_data.context
+                        )
+
+                    # 5. Аудио
+                    if word_data.audio:
+                        await conn.execute(
+                            """
+                            INSERT INTO audios (user_id, audio_id, audio_url)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (user_id, audio_id) DO UPDATE
+                            SET audio_url = EXCLUDED.audio_url,
+                                edited = TRUE
+                            """,
+                            word_data.user_id,
+                            word_id,
+                            word_data.audio
+                        )
+
+                    logger.debug(
+                        "Word saved successfully: user_id=%s, word='%s', word_id=%s",
+                        word_data.user_id,
+                        word_data.word,
+                        word_id
                     )
 
-                return
+            except PaymentException:
+                raise
 
-
-            except Exception as e:
-                logger.error(f"Database error: {e}")
-
+            except Exception:
+                logger.error(
+                    "Database error while saving word: user_id=%s, word='%s'",
+                    word_data.user_id,
+                    getattr(word_data, "word", None)
+                )
+                raise
 
     async def delete_word(self, user_id: int, word_id: int) -> bool:
         async with self.acquire_connection() as conn:
             result = await conn.execute(
-                "DELETE FROM words WHERE user_id = $1 AND id = $2", user_id, word_id
+                "DELETE FROM words WHERE user_id = $1 AND id = $2;", user_id, word_id
             )
             return "DELETE" in result
 
