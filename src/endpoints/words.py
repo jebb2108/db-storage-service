@@ -20,8 +20,8 @@ async def get_words_handler(
     database: "DatabaseService" = Depends(get_database)
 ):
     """ Перенаправляет запрос на получение слова пользователя """
-    await database.query_words(user_id=user_id, word=None)
-    return Response(status_code=200)
+    data = await database.query_words(user_id=user_id, word=None)
+    return data or Response(status_code=204)
 
 
 @router.post("/words")
@@ -70,9 +70,8 @@ async def api_search_word_handler(
         database: "DatabaseService" = Depends(get_database)
 ):
     # Ищем слово от пользователя
-
-    await database.query_words(user_id=user_id, word=word)
-    return Response(status_code=200)
+    data = await database.query_words(user_id=user_id, word=word)
+    return data or Response(status_code=204)
 
 
 @router.get("/words/stats")
@@ -81,5 +80,5 @@ async def api_stats_handler(
         database: "DatabaseService" = Depends(get_database)
 ):
     """ Обработчик статистики слов пользователя """
-    await database.get_user_stats(user_id)
-    return Response(status_code=200)
+    data = await database.get_user_stats(user_id)
+    return data or Response(status_code=204)

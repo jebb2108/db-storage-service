@@ -383,7 +383,26 @@ class DatabaseService:
                 word_data.user_id, word_data.word)
             )
 
+
     async def query_words(self, user_id: Optional[int] = None, word: Optional[str] = None):
+        """
+        Ищет слова по фильтрам из user_id и word
+        При user_id  -> находит все слова пользователя
+        При user_id + word -> находит слово конкретного пользователя
+        Только word -> происходит поиск всех публичных слов
+
+        Возвращает словарь result, где ключ - int(user_id)
+        со списком из Word моделей, содержащий поле translations
+        со словарем из переводов вида:
+        {
+            '1': {
+                'translation': 'яблоко',
+                'part_of_speech': 'noun'
+            },
+
+            ...
+        }
+        """
         try:
             async with self.acquire_connection() as conn:
                 if user_id:
