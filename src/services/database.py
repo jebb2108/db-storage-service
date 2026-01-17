@@ -511,17 +511,8 @@ class DatabaseService:
     async def save_word(self, word_data: Word) -> None:
         async with self.acquire_connection() as conn:
             try:
-                # 1. Проверка пользователя
-                is_active = await conn.fetchval(
-                    "SELECT is_active FROM users WHERE user_id = $1",
-                    word_data.user_id
-                )
-                if is_active is not True:
-                    raise PaymentException(f"User {word_data.user_id} is inactive or not found")
-
                 async with conn.transaction():
-
-                    # 2. Создание слова (или получение id существующего)
+                    # 1. Создание слова (или получение id существующего)
                     row = await conn.fetchrow(
                         """
                         INSERT INTO words (user_id, word, is_public)
@@ -551,7 +542,7 @@ class DatabaseService:
 
                     word_id: int = row["id"]
 
-                    # 3. Переводы
+                    # 2. Переводы
                     if word_data.translations:
                         await conn.executemany(
                             """
@@ -565,7 +556,7 @@ class DatabaseService:
                             ]
                         )
 
-                    # 4. Контекст
+                    # 3. Контекст
                     if word_data.context:
                         await conn.execute(
                             """
@@ -580,7 +571,7 @@ class DatabaseService:
                             word_data.context
                         )
 
-                    # 5. Аудио
+                    # 4. Аудио
                     if word_data.audio:
                         await conn.execute(
                             """
@@ -601,9 +592,6 @@ class DatabaseService:
                         word_data.word,
                         word_id
                     )
-
-            except PaymentException:
-                raise
 
             except Exception:
                 logger.error(
